@@ -50,6 +50,7 @@ import random
 import numpy as np
 import matplotlib.cm as cm
 import torch
+from tqdm.auto import tqdm as tqdm
 
 
 from models.matching import Matching
@@ -206,14 +207,21 @@ if __name__ == '__main__':
               'directory \"{}\"'.format(output_dir))
 
     timer = AverageTimer(newline=True)
-    for i, pair in enumerate(pairs):
+    for i, pair in enumerate(tqdm(pairs)):
         name0, name1 = pair[:2]
         stem0, stem1 = Path(name0).stem, Path(name1).stem
+        superpointname0, superpointname1 = name0.replace(Path(name0).suffix, '_superpoints.npz'), name1.replace(Path(name1).suffix, '_superpoints.npz')
         matches_path = output_dir / '{}_{}_matches.npz'.format(stem0, stem1)
+        superpointpath0, superpointpath1 = output_dir / superpointname0, output_dir / superpointname1
         eval_path = output_dir / '{}_{}_evaluation.npz'.format(stem0, stem1)
         viz_path = output_dir / '{}_{}_matches.{}'.format(stem0, stem1, opt.viz_extension)
         viz_eval_path = output_dir / \
             '{}_{}_evaluation.{}'.format(stem0, stem1, opt.viz_extension)
+
+        if not superpointpath0.parent.exists():
+            superpointpath0.parent.mkdir()
+        if not superpointpath1.parent.exists():
+            superpointpath1.parent.mkdir()
 
         # Handle --cache logic.
         do_match = True
@@ -249,7 +257,7 @@ if __name__ == '__main__':
             timer.update('load_cache')
 
         if not (do_match or do_eval or do_viz or do_viz_eval):
-            timer.print('Finished pair {:5} of {:5}'.format(i, len(pairs)))
+            timer.print('Finished pair {:5} of {:5}'.format(i+1, len(pairs)))
             continue
 
         # If a rotation integer is provided (e.g. from EXIF data), use it:
@@ -271,9 +279,29 @@ if __name__ == '__main__':
 
         if do_match:
             # Perform the matching.
-            pred = matching({'image0': inp0, 'image1': inp1})
+            match_input = {'image0': inp0, 'image1': inp1}
+            if superpointpath0.exists():
+                superpoint0 = np.load(superpointpath0)
+                kpts0 = superpoint0['keypoints']
+                match_input['keypoints0'] = [torch.from_numpy(kpts0).to(device)]
+                match_input['descriptors0'] = [torch.from_numpy(superpoint0['descriptors']).to(device)]
+                match_input['scores0'] = [torch.from_numpy(superpoint0['scores']).to(device)]
+            if superpointpath1.exists():
+                superpoint1 = np.load(superpointpath1)
+                kpts1 = superpoint1['keypoints']
+                match_input['keypoints1'] = [torch.from_numpy(kpts1).to(device)]
+                match_input['descriptors1'] = [torch.from_numpy(superpoint1['descriptors']).to(device)]
+                match_input['scores1'] = [torch.from_numpy(superpoint1['scores']).to(device)]
+            pred = matching(match_input)
             pred = {k: v[0].cpu().numpy() for k, v in pred.items()}
-            kpts0, kpts1 = pred['keypoints0'], pred['keypoints1']
+            if not superpointpath0.exists():
+                kpts0 = pred['keypoints0']
+                np.savez(superpointpath0, keypoints=pred['keypoints0'], descriptors=pred['descriptors0'], scores=pred['scores0'])
+
+            if not superpointpath1.exists():
+                kpts1 = pred['keypoints1']
+                np.savez(superpointpath1, keypoints=pred['keypoints1'], descriptors=pred['descriptors1'], scores=pred['scores1'])
+
             matches, conf = pred['matches0'], pred['matching_scores0']
             timer.update('matcher')
 
@@ -397,7 +425,7 @@ if __name__ == '__main__':
 
             timer.update('viz_eval')
 
-        timer.print('Finished pair {:5} of {:5}'.format(i, len(pairs)))
+        timer.print('Finished pair {:5} of {:5}'.format(i+1, len(pairs)))
 
     if opt.eval:
         # Collate the results into a final table and print to terminal.

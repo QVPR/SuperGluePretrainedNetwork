@@ -51,6 +51,7 @@ import cv2
 import torch
 import matplotlib.pyplot as plt
 import matplotlib
+from tqdm.auto import tqdm as tqdm
 matplotlib.use('Agg')
 
 
@@ -82,17 +83,23 @@ class AverageTimer:
 
     def print(self, text='Timer'):
         total = 0.
-        print('[{}]'.format(text), end=' ')
+        # print('[{}]'.format(text), end=' ')
+        tqdm.write('[{}]'.format(text), end=' ')
         for key in self.times:
             val = self.times[key]
             if self.will_print[key]:
-                print('%s=%.3f' % (key, val), end=' ')
+                # print('%s=%.3f' % (key, val), end=' ')
+                tqdm.write('%s=%.3f' % (key, val), end=' ')
                 total += val
-        print('total=%.3f sec {%.1f FPS}' % (total, 1./total), end=' ')
+        # print('total=%.3f sec {%.1f FPS}' % (total, 1./total), end=' ')
+        # print('total=%.3f sec {%.1f FPS}' % (total, 1./total), end=' ')
         if self.newline:
-            print(flush=True)
+            # pass
+            tqdm.write('')
+            # print(flush=True)
         else:
-            print(end='\r', flush=True)
+            # print(end='\r', flush=True)
+            tqdm.write(end='\r')
         self.reset()
 
 

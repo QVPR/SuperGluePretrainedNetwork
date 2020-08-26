@@ -1,3 +1,5 @@
+.ipynb_checkpoints/
+dump*
 *.pyc
 *.DS_Store
 *.swp

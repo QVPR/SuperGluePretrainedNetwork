@@ -73,6 +73,7 @@ class Matching(torch.nn.Module):
         # We should either have i) one image per batch, or
         # ii) the same number of local features for all images in the batch.
         data = {**data, **pred}
+        # print('data', type(data['keypoints0']), type(data['keypoints0'][0]), data['keypoints0'][0].size(), data['keypoints1'][0].size(), data['descriptors0'][0].size(), data['descriptors1'][0].size(), data['scores0'][0].size(), data['scores1'][0].size())
 
         for k in data:
             if isinstance(data[k], (list, tuple)):
@@ -80,5 +81,6 @@ class Matching(torch.nn.Module):
 
         # Perform the matching
         pred = {**pred, **self.superglue(data)}
+        # print(pred.keys())
 
         return pred
