@@ -72,8 +72,14 @@ if __name__ == '__main__':
         '--input_pairs', type=str, default='assets/scannet_sample_pairs_with_gt.txt',
         help='Path to the list of image pairs')
     parser.add_argument(
+        '--skip_rows', type=int, default=0,
+        help='Skip that many rows from image pair list')
+    parser.add_argument(
         '--input_dir', type=str, default='assets/scannet_sample_images/',
         help='Path to the directory that contains the images')
+    parser.add_argument(
+        '--input_dir_ref', type=str, default=None,
+        help='Path to the directory that contains the reference images')
     parser.add_argument(
         '--output_dir', type=str, default='dump_match_pairs/',
         help='Path to the directory in which the .npz results and optionally,'
@@ -162,7 +168,11 @@ if __name__ == '__main__':
         raise ValueError('Cannot specify more than two integers for --resize')
 
     with open(opt.input_pairs, 'r') as f:
+        for _ in range(opt.skip_rows):
+            f.readline()
         pairs = [l.split() for l in f.readlines()]
+
+    print('Will evaluate %d pairs' % len(pairs))
 
     if opt.max_length > -1:
         pairs = pairs[0:np.min([len(pairs), opt.max_length])]
@@ -195,7 +205,11 @@ if __name__ == '__main__':
 
     # Create the output directories if they do not exist already.
     input_dir = Path(opt.input_dir)
-    print('Looking for data in directory \"{}\"'.format(input_dir))
+    if opt.input_dir_ref is None:
+        opt.input_dir_ref = input_dir
+    input_dir_ref = Path(opt.input_dir_ref)
+    print('Looking for query data in directory \"{}\"'.format(input_dir))
+    print('Looking for ref data in directory \"{}\"'.format(input_dir_ref))
     output_dir = Path(opt.output_dir)
     output_dir.mkdir(exist_ok=True, parents=True)
     print('Will write matches to directory \"{}\"'.format(output_dir))
@@ -209,9 +223,13 @@ if __name__ == '__main__':
     timer = AverageTimer(newline=True)
     for i, pair in enumerate(tqdm(pairs)):
         name0, name1 = pair[:2]
+        if name0.endswith(','):
+            name0 = name0[:-1]
+        if name1.endswith(','):
+            name1 = name1[:-1]
         stem0, stem1 = Path(name0).stem, Path(name1).stem
         superpointname0, superpointname1 = name0.replace(Path(name0).suffix, '_superpoints.npz'), name1.replace(Path(name1).suffix, '_superpoints.npz')
-        matches_path = output_dir / '{}_{}_matches.npz'.format(stem0, stem1)
+        matches_path = output_dir / '{}_{}_matches.npz'.format(name0.replace('/', 'SLASH'), name1.replace('/', 'SLASH'))
         superpointpath0, superpointpath1 = output_dir / superpointname0, output_dir / superpointname1
         eval_path = output_dir / '{}_{}_evaluation.npz'.format(stem0, stem1)
         viz_path = output_dir / '{}_{}_matches.{}'.format(stem0, stem1, opt.viz_extension)
@@ -219,9 +237,9 @@ if __name__ == '__main__':
             '{}_{}_evaluation.{}'.format(stem0, stem1, opt.viz_extension)
 
         if not superpointpath0.parent.exists():
-            superpointpath0.parent.mkdir()
+            superpointpath0.parent.mkdir(parents=True)
         if not superpointpath1.parent.exists():
-            superpointpath1.parent.mkdir()
+            superpointpath1.parent.mkdir(parents=True)
 
         # Handle --cache logic.
         do_match = True
@@ -270,10 +288,10 @@ if __name__ == '__main__':
         image0, inp0, scales0 = read_image(
             input_dir / name0, device, opt.resize, rot0, opt.resize_float)
         image1, inp1, scales1 = read_image(
-            input_dir / name1, device, opt.resize, rot1, opt.resize_float)
+            input_dir_ref / name1, device, opt.resize, rot1, opt.resize_float)
         if image0 is None or image1 is None:
             print('Problem reading image pair: {} {}'.format(
-                input_dir/name0, input_dir/name1))
+                input_dir/name0, input_dir_ref/name1))
             exit(1)
         timer.update('load_image')
 
