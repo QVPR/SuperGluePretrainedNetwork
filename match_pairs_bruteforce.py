@@ -95,6 +95,7 @@ if __name__ == '__main__':
         '--output_dir', type=str, default='dump_match_pairs/',
         help='Path to the directory in which the .npz results and optionally,'
              'the visualization images are written')
+    parser.add_argument('--reverse_order', action='store_true')
 
     opt = parser.parse_args()
     print(opt)
@@ -103,6 +104,9 @@ if __name__ == '__main__':
         for _ in range(opt.skip_rows):
             f.readline()
         pairs = [l.split() for l in f.readlines()]
+
+    if opt.reverse_order:
+        pairs = pairs.reverse()
 
     print('Will evaluate %d pairs' % len(pairs))
 
@@ -121,23 +125,24 @@ if __name__ == '__main__':
         stem0, stem1 = Path(name0).stem, Path(name1).stem
         superpointname0, superpointname1 = name0.replace(Path(name0).suffix, '_superpoints.npz'), name1.replace(Path(name1).suffix, '_superpoints.npz')
         matches_path = output_dir / '{}_{}_bf_matches.npz'.format(name0.replace('/', 'SLASH'), name1.replace('/', 'SLASH'))
-        superpointpath0, superpointpath1 = superpoint_dir / superpointname0, superpoint_dir / superpointname1
+        if not matches_path.exists():
+            superpointpath0, superpointpath1 = superpoint_dir / superpointname0, superpoint_dir / superpointname1
 
-        # Perform the matching.
-        superpoint0 = np.load(superpointpath0)
-        kpts0 = superpoint0['keypoints']
-        kpts0 = [cv2.KeyPoint(x=p[0], y=p[1], _size=1) for p in kpts0]
-        desc0 = superpoint0['descriptors'].T
+            # Perform the matching.
+            superpoint0 = np.load(superpointpath0)
+            kpts0 = superpoint0['keypoints']
+            kpts0 = [cv2.KeyPoint(x=p[0], y=p[1], _size=1) for p in kpts0]
+            desc0 = superpoint0['descriptors'].T
 
-        superpoint1 = np.load(superpointpath1)
-        kpts1 = superpoint1['keypoints']
-        kpts1 = [cv2.KeyPoint(x=p[0], y=p[1], _size=1) for p in kpts1]
-        desc1 = superpoint1['descriptors'].T
+            superpoint1 = np.load(superpointpath1)
+            kpts1 = superpoint1['keypoints']
+            kpts1 = [cv2.KeyPoint(x=p[0], y=p[1], _size=1) for p in kpts1]
+            desc1 = superpoint1['descriptors'].T
 
-        # Match and get rid of outliers
-        m_kp1, m_kp2, matches = match_descriptors(kpts0, desc0, kpts1, desc1)
-        H, inliers = compute_homography(m_kp1, m_kp2)
+            # Match and get rid of outliers
+            m_kp1, m_kp2, matches = match_descriptors(kpts0, desc0, kpts1, desc1)
+            H, inliers = compute_homography(m_kp1, m_kp2)
 
-        # Write the matches to disk.
-        out_matches = {'inliers': inliers, 'homography': H}
+            # Write the matches to disk.
+            out_matches = {'inliers': inliers, 'homography': H}
         np.savez(str(matches_path), **out_matches)
