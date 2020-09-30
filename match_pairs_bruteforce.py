@@ -96,6 +96,7 @@ if __name__ == '__main__':
         help='Path to the directory in which the .npz results and optionally,'
              'the visualization images are written')
     parser.add_argument('--reverse_order', action='store_true')
+    parser.add_argument('--shuffle_order', action='store_true')
 
     opt = parser.parse_args()
     print(opt)
@@ -107,6 +108,8 @@ if __name__ == '__main__':
 
     if opt.reverse_order:
         pairs = pairs.reverse()
+    if opt.shuffle_order:
+        pairs = pairs.shuffle()
 
     print('Will evaluate %d pairs' % len(pairs))
 
