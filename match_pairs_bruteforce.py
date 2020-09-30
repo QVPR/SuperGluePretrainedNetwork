@@ -107,9 +107,10 @@ if __name__ == '__main__':
         pairs = [l.split() for l in f.readlines()]
 
     if opt.reverse_order:
-        pairs = pairs.reverse()
+        pairs.reverse()
     if opt.shuffle_order:
-        pairs = pairs.shuffle()
+        import random
+        random.shuffle(pairs)
 
     print('Will evaluate %d pairs' % len(pairs))
 
