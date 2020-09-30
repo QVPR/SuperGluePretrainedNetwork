@@ -145,4 +145,5 @@ if __name__ == '__main__':
 
             # Write the matches to disk.
             out_matches = {'inliers': inliers, 'homography': H}
-        np.savez(str(matches_path), **out_matches)
+            np.savez(str(matches_path), **out_matches)
+
