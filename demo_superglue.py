@@ -49,10 +49,14 @@ import argparse
 import cv2
 import matplotlib.cm as cm
 import torch
+import numpy as np
 
 from models.matching import Matching
 from models.utils import (AverageTimer, VideoStreamer,
                           make_matching_plot_fast, frame2tensor)
+from models.models import get_pca_encoding
+from models.attention import findSalient, attn_calc_indices
+
 
 torch.set_grad_enabled(False)
 
@@ -85,7 +89,7 @@ if __name__ == '__main__':
              'dimension, if -1, do not resize')
 
     parser.add_argument(
-        '--superglue', choices={'indoor', 'outdoor'}, default='indoor',
+        '--superglue', choices={'indoor', 'outdoor', 'ours'}, default='indoor',
         help='SuperGlue weights')
     parser.add_argument(
         '--max_keypoints', type=int, default=-1,
@@ -114,6 +118,30 @@ if __name__ == '__main__':
     parser.add_argument(
         '--force_cpu', action='store_true',
         help='Force pytorch to run in CPU mode.')
+    parser.add_argument(
+        '--regionnetvlad', action='store_true',
+        help='Use regionnetvlad instead of superpoint')
+    parser.add_argument(
+        '--resume', type=str, default='',
+        help='Path to load checkpoint from, for resuming training or testing.')
+    parser.add_argument(
+        '--ckpt', type=str, default='latest',
+        help='Resume from latest or best checkpoint.',
+        choices=['latest', 'best'])
+    parser.add_argument(
+        '--vladv2', action='store_true', help='Use VLAD v2')
+    parser.add_argument(
+        '--use_pca', type=str, default=None, choices=['PCA', 'WPCA'])
+    parser.add_argument(
+        '--num_pcs', type=int, default=4096, help='Number of principal components for PCA. Default=4096')
+    parser.add_argument(
+        '--regionSize', type=int, default=5, help='Region size for region creation')
+    parser.add_argument(
+        '--moveAmount', type=int, default=1, help='Move amount between successive regions')
+    parser.add_argument(
+        '--num_clusters', type=int, default=64, help='Number of NetVlad clusters. Default=64')
+    parser.add_argument(
+        '--useAttentionScoring', action='store_true', help='use attention as a keypoint scoring method')
 
     opt = parser.parse_args()
     print(opt)
@@ -130,6 +158,9 @@ if __name__ == '__main__':
     else:
         raise ValueError('Cannot specify more than two integers for --resize')
 
+    if opt.superglue == 'ours':
+        assert opt.regionnetvlad is True
+
     device = 'cuda' if torch.cuda.is_available() and not opt.force_cpu else 'cpu'
     print('Running inference on device \"{}\"'.format(device))
     config = {
@@ -144,18 +175,44 @@ if __name__ == '__main__':
             'match_threshold': opt.match_threshold,
         }
     }
-    matching = Matching(config).eval().to(device)
+    matching = Matching(config, opt).eval().to(device)
     keys = ['keypoints', 'scores', 'descriptors']
 
     vs = VideoStreamer(opt.input, opt.resize, opt.skip,
                        opt.image_glob, opt.max_length)
+    if opt.regionnetvlad:
+        vs.rgb = True
+
     frame, ret = vs.next_frame()
+    frame = cv2.resize(frame, (640, 480))
+    # print('frameshape', frame.shape)
     assert ret, 'Error when reading the first frame (try different --input?)'
 
     frame_tensor = frame2tensor(frame, device)
-    last_data = matching.superpoint({'image': frame_tensor})
-    last_data = {k+'0': last_data[k] for k in keys}
+    if opt.regionnetvlad:
+        last_data = matching.image_transformer(frame)
+        last_data = torch.unsqueeze(last_data.to(device), 0)
+        last_image_encoding = matching.model.encoder(last_data)
+        last_vlad_regions, _ = matching.model.pool(last_image_encoding)
+        vlad_regions_pca0 = get_pca_encoding(matching.model,
+                                             last_vlad_regions.permute(2, 0, 1).reshape(-1, last_vlad_regions.size(1)),
+                                             matching.resume_ckpt).reshape(last_vlad_regions.size(2), last_vlad_regions.size(0),
+                                                                       matching.pool_size).permute(1, 2, 0)
+
+        desc0 = vlad_regions_pca0[0]
+        kps0 = matching.indices.T
+        if matching.useAttention:
+            scores0 = findSalient(desc0, matching.indices, matching.adj, matching.sumsMap, device)
+        else:
+            scores0 = np.ones((kps0.shape[0]))
+        # 'keypoints', 'scores', 'descriptors'
+        kps0_imagespace = (kps0 + matching.regionSize / 2.0) * 16
+        last_data = {'keypoints0': [torch.from_numpy(kps0_imagespace.reshape((-1, 2))).to(device).float()], 'scores0': [scores0], 'descriptors0': [desc0], 'frame0': frame}
+    else:
+        last_data = matching.superpoint({'image': frame_tensor})
+        last_data = {k+'0': last_data[k] for k in keys}
     last_data['image0'] = frame_tensor
+    # print(last_data.keys())
     last_frame = frame
     last_image_id = 0
 
@@ -182,6 +239,7 @@ if __name__ == '__main__':
 
     while True:
         frame, ret = vs.next_frame()
+        frame = cv2.resize(frame, (640, 480))
         if not ret:
             print('Finished demo_superglue.py')
             break
@@ -189,7 +247,10 @@ if __name__ == '__main__':
         stem0, stem1 = last_image_id, vs.i - 1
 
         frame_tensor = frame2tensor(frame, device)
-        pred = matching({**last_data, 'image1': frame_tensor})
+        if opt.regionnetvlad:
+            pred = matching({**last_data, 'frame1': frame, 'image1': frame_tensor})
+        else:
+            pred = matching({**last_data, 'image1': frame_tensor})
         kpts0 = last_data['keypoints0'][0].cpu().numpy()
         kpts1 = pred['keypoints1'][0].cpu().numpy()
         matches = pred['matches0'][0].cpu().numpy()
@@ -212,9 +273,14 @@ if __name__ == '__main__':
             'Match Threshold: {:.2f}'.format(m_thresh),
             'Image Pair: {:06}:{:06}'.format(stem0, stem1),
         ]
-        out = make_matching_plot_fast(
-            last_frame, frame, kpts0, kpts1, mkpts0, mkpts1, color, text,
-            path=None, show_keypoints=opt.show_keypoints, small_text=small_text)
+        if opt.regionnetvlad:
+            out = make_matching_plot_fast(
+                cv2.cvtColor(last_frame, cv2.COLOR_RGB2GRAY), cv2.cvtColor(frame, cv2.COLOR_RGB2GRAY), kpts0, kpts1, mkpts0, mkpts1, color, text,
+                path=None, show_keypoints=opt.show_keypoints, small_text=small_text)
+        else:
+            out = make_matching_plot_fast(
+                last_frame, frame, kpts0, kpts1, mkpts0, mkpts1, color, text,
+                path=None, show_keypoints=opt.show_keypoints, small_text=small_text)
 
         if not opt.no_display:
             cv2.imshow('SuperGlue matches', out)

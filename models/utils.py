@@ -99,7 +99,7 @@ class AverageTimer:
             # print(flush=True)
         else:
             # print(end='\r', flush=True)
-            tqdm.write(end='\r')
+            tqdm.write('', end='\r')
         self.reset()
 
 
@@ -119,6 +119,7 @@ class VideoStreamer:
         self.cap = []
         self.camera = True
         self.video_file = False
+        self.rgb = False
         self.listing = []
         self.resize = resize
         self.interp = cv2.INTER_AREA
@@ -210,12 +211,13 @@ class VideoStreamer:
             w_new, h_new = process_resize(w, h, self.resize)
             image = cv2.resize(image, (w_new, h_new),
                                interpolation=self.interp)
-            image = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+            if not self.rgb:
+                image = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
         else:
             image_file = str(self.listing[self.i])
             image = self.load_image(image_file)
         self.i = self.i + 1
-        return (image, True)
+        return image, True
 
     def start_ip_camera_thread(self):
         self._ip_thread = Thread(target=self.update_ip_camera, args=())

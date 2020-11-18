@@ -232,7 +232,9 @@ if __name__ == '__main__':
         matches_path = output_dir / '{}_{}_matches.npz'.format(name0.replace('/', 'SLASH'), name1.replace('/', 'SLASH'))
         superpointpath0, superpointpath1 = output_dir / superpointname0, output_dir / superpointname1
         eval_path = output_dir / '{}_{}_evaluation.npz'.format(stem0, stem1)
-        viz_path = output_dir / '{}_{}_matches.{}'.format(stem0, stem1, opt.viz_extension)
+        # viz_path = output_dir / '{}_{}_matches.{}'.format(stem0, stem1, opt.viz_extension)
+        # print(name0)
+        viz_path = output_dir / '{}_matches.{}'.format(str(name0).split('/')[-2], opt.viz_extension)
         viz_eval_path = output_dir / \
             '{}_{}_evaluation.{}'.format(stem0, stem1, opt.viz_extension)
 
