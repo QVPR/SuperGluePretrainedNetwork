@@ -147,6 +147,9 @@ if __name__ == '__main__':
         '--opencv_display', action='store_true',
         help='Visualize via OpenCV before saving output images')
     parser.add_argument(
+        '--reverse_order', action='store_true',
+        help='Reverse order of list before processing')
+    parser.add_argument(
         '--shuffle', action='store_true',
         help='Shuffle ordering of pairs before processing')
     parser.add_argument(
@@ -188,6 +191,9 @@ if __name__ == '__main__':
 
     if opt.shuffle:
         random.Random(0).shuffle(pairs)
+        
+    if opt.reverse_order:
+        pairs.reverse()
 
     if opt.eval:
         if not all([len(p) == 38 for p in pairs]):
