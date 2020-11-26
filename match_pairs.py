@@ -89,6 +89,12 @@ if __name__ == '__main__':
         '--max_length', type=int, default=-1,
         help='Maximum number of pairs to evaluate')
     parser.add_argument(
+        '--start_pair_num', type=int, default=0,
+        help='Allows constraining the pairs to evaluate')
+    parser.add_argument(
+        '--end_pair_num', type=int, default=None,
+        help='Allows constraining the pairs to evaluate')
+    parser.add_argument(
         '--resize', type=int, nargs='+', default=[640, 480],
         help='Resize the input image before running inference. If two numbers, '
              'resize to the exact dimensions, if one number, resize the max '
@@ -172,10 +178,13 @@ if __name__ == '__main__':
             f.readline()
         pairs = [l.split() for l in f.readlines()]
 
-    print('Will evaluate %d pairs' % len(pairs))
-
     if opt.max_length > -1:
         pairs = pairs[0:np.min([len(pairs), opt.max_length])]
+
+    if opt.start_pair_num != 0 and opt.end_pair_num is not None:
+        pairs = pairs[opt.start_pair_num:opt.end_pair_num]
+
+    print('Will evaluate %d pairs' % len(pairs))
 
     if opt.shuffle:
         random.Random(0).shuffle(pairs)
